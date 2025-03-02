@@ -1,7 +1,10 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
-local function criarESP(player, textoInicial)
+-- Cache para armazenar o nível conhecido de cada player
+local nivelCache = {}
+
+local function criarESP(player)
     local billboard = Instance.new("BillboardGui")
     billboard.Size = UDim2.new(0, 100, 0, 50)
     billboard.StudsOffset = Vector3.new(0, 3, 0)
@@ -14,24 +17,26 @@ local function criarESP(player, textoInicial)
     label.TextStrokeTransparency = 0.5
     label.TextScaled = true
     label.Parent = billboard
-    label.Text = textoInicial or "Desconhecido"
+    label.Text = player.Name .. "\nNivel: Carregando..."
 
     local function atualizarTexto()
         local character = player.Character
         if character and character:FindFirstChild("Head") then
-            local tag = character:FindFirstChild("Tag") -- Essa é a Billboard do jogo
+            local tag = character:FindFirstChild("Tag")
+
             if tag then
-                local nivel = "Desconhecido"
+                -- Detecta a Billboard e guarda o nível no cache
                 for _, descendant in ipairs(tag:GetDescendants()) do
                     if descendant:IsA("TextLabel") and descendant.Text ~= player.Name then
-                        nivel = descendant.Text
+                        nivelCache[player] = descendant.Text
                         break
                     end
                 end
-                label.Text = player.Name .. "\n" .. nivel
-            else
-                label.Text = player.Name .. "\nNivel: Longe"
             end
+
+            -- Mostra o nível do cache (ou "Desconhecido" se nunca visto)
+            local nivel = nivelCache[player] or "Desconhecido"
+            label.Text = player.Name .. "\n" .. nivel
         end
     end
 
@@ -44,7 +49,7 @@ end
 
 local function adicionarESP(player)
     if player ~= Players.LocalPlayer then
-        criarESP(player, "Carregando...")
+        criarESP(player)
     end
 end
 
@@ -56,4 +61,8 @@ Players.PlayerAdded:Connect(function(player)
     player.CharacterAdded:Connect(function()
         adicionarESP(player)
     end)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    nivelCache[player] = nil -- Remove do cache quando o player sai
 end)
