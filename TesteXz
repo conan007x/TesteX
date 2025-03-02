@@ -1,410 +1,59 @@
--- ESP Script para jogadores
--- Mostra jogadores através das paredes, esqueletos, caixas e nomes
-
-local ESP = {
-    Enabled = true,
-    BoxEnabled = true,
-    SkeletonEnabled = true,
-    NameEnabled = true,
-    TeamColors = true,
-    TeamCheck = false,
-    Color = Color3.fromRGB(255, 255, 255),
-    BoxThickness = 1,
-    SkeletonThickness = 1,
-    NameSize = 14,
-    Distance = 2000
-}
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local Camera = workspace.CurrentCamera
-local LocalPlayer = Players.LocalPlayer
-local Mouse = LocalPlayer:GetMouse()
 
--- Criar elementos de desenho
-local DrawingObjects = {}
+local function criarESP(player, textoInicial)
+    local billboard = Instance.new("BillboardGui")
+    billboard.Size = UDim2.new(0, 100, 0, 50)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.AlwaysOnTop = true
 
--- Função para criar um novo elemento de desenho
-local function CreateDrawingObject(type, properties)
-    local obj = Drawing.new(type)
-    for k, v in pairs(properties or {}) do
-        obj[k] = v
-    end
-    return obj
-end
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.new(1, 1, 1)
+    label.TextStrokeTransparency = 0.5
+    label.TextScaled = true
+    label.Parent = billboard
+    label.Text = textoInicial or "Desconhecido"
 
--- Função para criar um novo ESP para um jogador
-local function CreateESP(player)
-    if not player.Character then return end
-    
-    local esp = {
-        Name = CreateDrawingObject("Text", {
-            Text = player.Name,
-            Size = ESP.NameSize,
-            Center = true,
-            Outline = true,
-            Color = ESP.Color,
-            OutlineColor = Color3.new(0, 0, 0),
-            Visible = false
-        }),
-        Box = {
-            TopLeft = CreateDrawingObject("Line", {
-                Thickness = ESP.BoxThickness,
-                Color = ESP.Color,
-                Visible = false
-            }),
-            TopRight = CreateDrawingObject("Line", {
-                Thickness = ESP.BoxThickness,
-                Color = ESP.Color,
-                Visible = false
-            }),
-            BottomLeft = CreateDrawingObject("Line", {
-                Thickness = ESP.BoxThickness,
-                Color = ESP.Color,
-                Visible = false
-            }),
-            BottomRight = CreateDrawingObject("Line", {
-                Thickness = ESP.BoxThickness,
-                Color = ESP.Color,
-                Visible = false
-            })
-        },
-        Skeleton = {
-            Head = {
-                Neck = CreateDrawingObject("Line", {
-                    Thickness = ESP.SkeletonThickness,
-                    Color = ESP.Color,
-                    Visible = false
-                })
-            },
-            Torso = {
-                LeftArm = CreateDrawingObject("Line", {
-                    Thickness = ESP.SkeletonThickness,
-                    Color = ESP.Color,
-                    Visible = false
-                }),
-                RightArm = CreateDrawingObject("Line", {
-                    Thickness = ESP.SkeletonThickness,
-                    Color = ESP.Color,
-                    Visible = false
-                }),
-                LeftLeg = CreateDrawingObject("Line", {
-                    Thickness = ESP.SkeletonThickness,
-                    Color = ESP.Color,
-                    Visible = false
-                }),
-                RightLeg = CreateDrawingObject("Line", {
-                    Thickness = ESP.SkeletonThickness,
-                    Color = ESP.Color,
-                    Visible = false
-                })
-            }
-        },
-        Player = player
-    }
-    
-    DrawingObjects[player] = esp
-    return esp
-end
-
--- Função para atualizar o ESP
-local function UpdateESP()
-    for player, esp in pairs(DrawingObjects) do
+    local function atualizarTexto()
         local character = player.Character
-        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-        local team = player.Team
-        
-        if not ESP.Enabled or not character or not humanoid or humanoid.Health <= 0 then
-            esp.Name.Visible = false
-            
-            for _, line in pairs(esp.Box) do
-                line.Visible = false
-            end
-            
-            for _, part in pairs(esp.Skeleton.Head) do
-                part.Visible = false
-            end
-            
-            for _, part in pairs(esp.Skeleton.Torso) do
-                part.Visible = false
-            end
-            
-            if not character or not humanoid or humanoid.Health <= 0 then
-                -- Limpar ESP para jogadores mortos ou sem personagem
-                DrawingObjects[player] = nil
-            end
-            
-            continue
-        end
-        
-        -- Verificação de equipe
-        if ESP.TeamCheck and player.Team and player.Team == LocalPlayer.Team then
-            esp.Name.Visible = false
-            
-            for _, line in pairs(esp.Box) do
-                line.Visible = false
-            end
-            
-            for _, part in pairs(esp.Skeleton.Head) do
-                part.Visible = false
-            end
-            
-            for _, part in pairs(esp.Skeleton.Torso) do
-                part.Visible = false
-            end
-            
-            continue
-        end
-        
-        -- Cor baseada na equipe
-        local espColor = ESP.Color
-        if ESP.TeamColors and team then
-            espColor = team.TeamColor.Color
-        end
-        
-        -- Obter posições dos membros
-        local head = character:FindFirstChild("Head")
-        local torso = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
-        local rootPart = character:FindFirstChild("HumanoidRootPart")
-        local leftArm = character:FindFirstChild("Left Arm") or character:FindFirstChild("LeftHand")
-        local rightArm = character:FindFirstChild("Right Arm") or character:FindFirstChild("RightHand")
-        local leftLeg = character:FindFirstChild("Left Leg") or character:FindFirstChild("LeftFoot")
-        local rightLeg = character:FindFirstChild("Right Leg") or character:FindFirstChild("RightFoot")
-        
-        if rootPart and head then
-            local rootPos, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
-            local headPos = Camera:WorldToViewportPoint(head.Position)
-            local distance = (Camera.CFrame.Position - rootPart.Position).Magnitude
-            
-            -- Verificar distância
-            if distance > ESP.Distance then
-                esp.Name.Visible = false
-                
-                for _, line in pairs(esp.Box) do
-                    line.Visible = false
-                end
-                
-                for _, part in pairs(esp.Skeleton.Head) do
-                    part.Visible = false
-                end
-                
-                for _, part in pairs(esp.Skeleton.Torso) do
-                    part.Visible = false
-                end
-                
-                continue
-            end
-            
-            if onScreen then
-                -- Calcular tamanho da caixa
-                local sizeX = math.clamp(1000 / distance, 10, 100)
-                local sizeY = math.clamp(2000 / distance, 20, 200)
-                
-                local boxTopLeft = Vector2.new(rootPos.X - sizeX / 2, rootPos.Y - sizeY / 2)
-                local boxTopRight = Vector2.new(rootPos.X + sizeX / 2, rootPos.Y - sizeY / 2)
-                local boxBottomLeft = Vector2.new(rootPos.X - sizeX / 2, rootPos.Y + sizeY / 2)
-                local boxBottomRight = Vector2.new(rootPos.X + sizeX / 2, rootPos.Y + sizeY / 2)
-                
-                -- Atualizar a caixa
-                esp.Box.TopLeft.From = boxTopLeft
-                esp.Box.TopLeft.To = boxTopRight
-                esp.Box.TopLeft.Color = espColor
-                esp.Box.TopLeft.Visible = ESP.BoxEnabled
-                
-                esp.Box.TopRight.From = boxTopRight
-                esp.Box.TopRight.To = boxBottomRight
-                esp.Box.TopRight.Color = espColor
-                esp.Box.TopRight.Visible = ESP.BoxEnabled
-                
-                esp.Box.BottomLeft.From = boxBottomLeft
-                esp.Box.BottomLeft.To = boxTopLeft
-                esp.Box.BottomLeft.Color = espColor
-                esp.Box.BottomLeft.Visible = ESP.BoxEnabled
-                
-                esp.Box.BottomRight.From = boxBottomRight
-                esp.Box.BottomRight.To = boxBottomLeft
-                esp.Box.BottomRight.Color = espColor
-                esp.Box.BottomRight.Visible = ESP.BoxEnabled
-                
-                -- Atualizar o nome
-                esp.Name.Position = Vector2.new(rootPos.X, boxTopLeft.Y - 15)
-                esp.Name.Color = espColor
-                esp.Name.Visible = ESP.NameEnabled
-                
-                -- Atualizar o esqueleto se as partes do corpo estiverem disponíveis
-                if ESP.SkeletonEnabled and torso then
-                    local torsoPos = Camera:WorldToViewportPoint(torso.Position)
-                    
-                    -- Cabeça para torso
-                    if head then
-                        local headPos = Camera:WorldToViewportPoint(head.Position)
-                        esp.Skeleton.Head.Neck.From = Vector2.new(headPos.X, headPos.Y)
-                        esp.Skeleton.Head.Neck.To = Vector2.new(torsoPos.X, torsoPos.Y)
-                        esp.Skeleton.Head.Neck.Color = espColor
-                        esp.Skeleton.Head.Neck.Visible = true
-                    end
-                    
-                    -- Torso para braço esquerdo
-                    if leftArm then
-                        local leftArmPos = Camera:WorldToViewportPoint(leftArm.Position)
-                        esp.Skeleton.Torso.LeftArm.From = Vector2.new(torsoPos.X, torsoPos.Y)
-                        esp.Skeleton.Torso.LeftArm.To = Vector2.new(leftArmPos.X, leftArmPos.Y)
-                        esp.Skeleton.Torso.LeftArm.Color = espColor
-                        esp.Skeleton.Torso.LeftArm.Visible = true
-                    else
-                        esp.Skeleton.Torso.LeftArm.Visible = false
-                    end
-                    
-                    -- Torso para braço direito
-                    if rightArm then
-                        local rightArmPos = Camera:WorldToViewportPoint(rightArm.Position)
-                        esp.Skeleton.Torso.RightArm.From = Vector2.new(torsoPos.X, torsoPos.Y)
-                        esp.Skeleton.Torso.RightArm.To = Vector2.new(rightArmPos.X, rightArmPos.Y)
-                        esp.Skeleton.Torso.RightArm.Color = espColor
-                        esp.Skeleton.Torso.RightArm.Visible = true
-                    else
-                        esp.Skeleton.Torso.RightArm.Visible = false
-                    end
-                    
-                    -- Torso para perna esquerda
-                    if leftLeg then
-                        local leftLegPos = Camera:WorldToViewportPoint(leftLeg.Position)
-                        esp.Skeleton.Torso.LeftLeg.From = Vector2.new(torsoPos.X, torsoPos.Y)
-                        esp.Skeleton.Torso.LeftLeg.To = Vector2.new(leftLegPos.X, leftLegPos.Y)
-                        esp.Skeleton.Torso.LeftLeg.Color = espColor
-                        esp.Skeleton.Torso.LeftLeg.Visible = true
-                    else
-                        esp.Skeleton.Torso.LeftLeg.Visible = false
-                    end
-                    
-                    -- Torso para perna direita
-                    if rightLeg then
-                        local rightLegPos = Camera:WorldToViewportPoint(rightLeg.Position)
-                        esp.Skeleton.Torso.RightLeg.From = Vector2.new(torsoPos.X, torsoPos.Y)
-                        esp.Skeleton.Torso.RightLeg.To = Vector2.new(rightLegPos.X, rightLegPos.Y)
-                        esp.Skeleton.Torso.RightLeg.Color = espColor
-                        esp.Skeleton.Torso.RightLeg.Visible = true
-                    else
-                        esp.Skeleton.Torso.RightLeg.Visible = false
-                    end
-                else
-                    for _, part in pairs(esp.Skeleton.Head) do
-                        part.Visible = false
-                    end
-                    
-                    for _, part in pairs(esp.Skeleton.Torso) do
-                        part.Visible = false
+        if character and character:FindFirstChild("Head") then
+            local tag = character:FindFirstChild("Tag") -- Essa é a Billboard do jogo
+            if tag then
+                local nivel = "Desconhecido"
+                for _, descendant in ipairs(tag:GetDescendants()) do
+                    if descendant:IsA("TextLabel") and descendant.Text ~= player.Name then
+                        nivel = descendant.Text
+                        break
                     end
                 end
+                label.Text = player.Name .. "\n" .. nivel
             else
-                -- Fora da tela
-                esp.Name.Visible = false
-                
-                for _, line in pairs(esp.Box) do
-                    line.Visible = false
-                end
-                
-                for _, part in pairs(esp.Skeleton.Head) do
-                    part.Visible = false
-                end
-                
-                for _, part in pairs(esp.Skeleton.Torso) do
-                    part.Visible = false
-                end
-            end
-        else
-            -- Sem partes necessárias
-            esp.Name.Visible = false
-            
-            for _, line in pairs(esp.Box) do
-                line.Visible = false
-            end
-            
-            for _, part in pairs(esp.Skeleton.Head) do
-                part.Visible = false
-            end
-            
-            for _, part in pairs(esp.Skeleton.Torso) do
-                part.Visible = false
+                label.Text = player.Name .. "\nNivel: Longe"
             end
         end
     end
+
+    local character = player.Character or player.CharacterAdded:Wait()
+    if character:WaitForChild("Head", 5) then
+        billboard.Parent = character.Head
+        RunService.RenderStepped:Connect(atualizarTexto)
+    end
 end
 
--- Conectar ao evento PlayerAdded
+local function adicionarESP(player)
+    if player ~= Players.LocalPlayer then
+        criarESP(player, "Carregando...")
+    end
+end
+
+for _, player in ipairs(Players:GetPlayers()) do
+    adicionarESP(player)
+end
+
 Players.PlayerAdded:Connect(function(player)
-    if player ~= LocalPlayer then
-        player.CharacterAdded:Connect(function()
-            CreateESP(player)
-        end)
-        
-        if player.Character then
-            CreateESP(player)
-        end
-    end
+    player.CharacterAdded:Connect(function()
+        adicionarESP(player)
+    end)
 end)
-
--- Inicializar ESP para jogadores existentes
-for _, player in pairs(Players:GetPlayers()) do
-    if player ~= LocalPlayer then
-        if player.Character then
-            CreateESP(player)
-        end
-        
-        player.CharacterAdded:Connect(function()
-            CreateESP(player)
-        end)
-    end
-end
-
--- Remover ESP para jogadores que saíram
-Players.PlayerRemoving:Connect(function(player)
-    if DrawingObjects[player] then
-        for i, v in pairs(DrawingObjects[player].Box) do
-            v:Remove()
-        end
-        
-        for _, part in pairs(DrawingObjects[player].Skeleton.Head) do
-            part:Remove()
-        end
-        
-        for _, part in pairs(DrawingObjects[player].Skeleton.Torso) do
-            part:Remove()
-        end
-        
-        DrawingObjects[player].Name:Remove()
-        DrawingObjects[player] = nil
-    end
-end)
-
--- Toggle de funções com teclas
-UserInputService.InputBegan:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.End then
-        ESP.Enabled = not ESP.Enabled
-    elseif input.KeyCode == Enum.KeyCode.F1 then
-        ESP.BoxEnabled = not ESP.BoxEnabled
-    elseif input.KeyCode == Enum.KeyCode.F2 then
-        ESP.SkeletonEnabled = not ESP.SkeletonEnabled
-    elseif input.KeyCode == Enum.KeyCode.F3 then
-        ESP.NameEnabled = not ESP.NameEnabled
-    elseif input.KeyCode == Enum.KeyCode.F4 then
-        ESP.TeamCheck = not ESP.TeamCheck
-    elseif input.KeyCode == Enum.KeyCode.F5 then
-        ESP.TeamColors = not ESP.TeamColors
-    end
-end)
-
--- Loop de atualização
-RunService.RenderStepped:Connect(function()
-    UpdateESP()
-end)
-
--- Notificação de inicialização
-game:GetService("StarterGui"):SetCore("SendNotification", {
-    Title = "ESP Carregado",
-    Text = "Controles:\nEnd: Toggle ESP\nF1: Toggle Caixas\nF2: Toggle Esqueletos\nF3: Toggle Nomes\nF4: Toggle Verificação de Equipe\nF5: Toggle Cores de Equipe",
-    Duration = 10
-})
-
-return ESP
