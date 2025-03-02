@@ -1,410 +1,97 @@
--- Aimbot Script com FOV Adjustável e Smoothness
--- Criado para uso com a tecla Shift
+-- Script para aumentar a velocidade ao pressionar X
+-- Voltar ao normal ao soltar X
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local GuiService = game:GetService("GuiService")
-local Camera = workspace.CurrentCamera
+local RunService = game:GetService("RunService")
+
 local LocalPlayer = Players.LocalPlayer
-local Mouse = LocalPlayer:GetMouse()
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local Humanoid = Character:WaitForChild("Humanoid")
 
--- Configurações do Aimbot (ajustáveis)
-local Settings = {
-    Enabled = true,         -- Aimbot ativado
-    TeamCheck = false,      -- Verificar se é da mesma equipe
-    AliveCheck = true,      -- Verificar se o alvo está vivo
-    WallCheck = false,      -- Verificar paredes (pode causar lag)
-    Smoothness = 0.5,       -- Quanto menor, mais rápido o aim (0.01 - 1)
-    FOV = 250,              -- Tamanho do FOV circular em pixels
-    ShowFOV = true,         -- Mostrar círculo de FOV
-    FOVColor = Color3.fromRGB(255, 255, 255), -- Cor do círculo
-    TargetPart = "Head",    -- Parte do corpo para mirar (Head, Torso, HumanoidRootPart)
-    MaxDistance = 1000,     -- Distância máxima para mirar
-    AimKey = Enum.KeyCode.LeftShift -- Tecla para ativar (Shift)
-}
+-- Aguardar novo personagem quando o atual morrer
+LocalPlayer.CharacterAdded:Connect(function(NewCharacter)
+    Character = NewCharacter
+    Humanoid = NewCharacter:WaitForChild("Humanoid")
+end)
 
--- Criar círculo FOV
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Visible = Settings.ShowFOV
-FOVCircle.Radius = Settings.FOV
-FOVCircle.Thickness = 1
-FOVCircle.Transparency = 1
-FOVCircle.Color = Settings.FOVColor
-FOVCircle.Filled = false
-FOVCircle.NumSides = 60
+-- Configurações
+local normalSpeed = 16       -- Velocidade normal do personagem
+local boostedSpeed = 22      -- Velocidade aumentada (ajuste este valor para ser sutil)
+local originalSpeed = Humanoid.WalkSpeed -- Guardar velocidade original
 
--- Variáveis de estado
-local Target = nil
-local Holding = false
-local AimbotActive = false
+-- Variáveis de controle
+local speedBoosted = false
+local keyPressed = false
 
--- Atualizar o círculo de FOV
-local function UpdateFOV()
-    if not Settings.ShowFOV then
-        FOVCircle.Visible = false
-        return
+-- Função para aplicar velocidade
+local function setSpeed(speed)
+    if Character and Humanoid then
+        Humanoid.WalkSpeed = speed
     end
-    
-    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    FOVCircle.Radius = Settings.FOV
-    FOVCircle.Visible = Settings.Enabled
 end
 
--- Verificar se o alvo está dentro do FOV
-local function IsInFOV(part)
-    local pos = Camera:WorldToScreenPoint(part.Position)
-    local magnitude = (Vector2.new(pos.X, pos.Y) - Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)).Magnitude
-    return magnitude <= Settings.FOV
-end
+-- Detectar quando a tecla X é pressionada ou solta
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    -- Ignorar se a entrada está sendo processada pelo jogo (chat, etc)
+    if gameProcessed then return end
+    
+    -- Verificar se a tecla X foi pressionada
+    if input.KeyCode == Enum.KeyCode.X then
+        keyPressed = true
+        
+        -- Guardar a velocidade atual caso seja diferente do padrão
+        if not speedBoosted then
+            originalSpeed = Humanoid.WalkSpeed
+        end
+        
+        -- Ativar aumento de velocidade
+        speedBoosted = true
+        setSpeed(boostedSpeed)
+    end
+end)
 
--- Verificar se o alvo está visível (sem paredes)
-local function IsVisible(part)
-    if not Settings.WallCheck then return true end
-    
-    local origin = Camera.CFrame.Position
-    local direction = (part.Position - origin).Unit * Settings.MaxDistance
-    local ray = Ray.new(origin, direction)
-    
-    local hit, _ = workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character, part.Parent})
-    return hit == nil
-end
+UserInputService.InputEnded:Connect(function(input, gameProcessed)
+    -- Verificar se a tecla X foi solta
+    if input.KeyCode == Enum.KeyCode.X then
+        keyPressed = false
+        
+        -- Desativar aumento de velocidade
+        speedBoosted = false
+        setSpeed(originalSpeed) -- Voltar à velocidade original
+    end
+end)
 
--- Verificar se o jogador está vivo
-local function IsAlive(player)
-    if not Settings.AliveCheck then return true end
-    
-    local character = player.Character
-    if not character then return false end
-    
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return false end
-    
-    return humanoid.Health > 0
-end
-
--- Verificar equipe
-local function IsSameTeam(player)
-    if not Settings.TeamCheck then return false end
-    return player.Team == LocalPlayer.Team
-end
-
--- Encontrar o melhor alvo
-local function GetClosestPlayerInFOV()
-    local closestPlayer = nil
-    local shortestDistance = Settings.FOV
-    
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and IsAlive(player) and not IsSameTeam(player) then
-            local character = player.Character
-            if character then
-                local targetPart = character:FindFirstChild(Settings.TargetPart)
-                if targetPart and IsInFOV(targetPart) and IsVisible(targetPart) then
-                    local pos = Camera:WorldToScreenPoint(targetPart.Position)
-                    local magnitude = (Vector2.new(pos.X, pos.Y) - Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)).Magnitude
-                    
-                    if magnitude < shortestDistance then
-                        closestPlayer = player
-                        shortestDistance = magnitude
-                    end
-                end
+-- Loop de verificação de segurança (mantém o script funcionando mesmo se houver problemas)
+RunService.Heartbeat:Connect(function()
+    -- Verificar se o personagem morreu ou resetou
+    if not Character or not Character:FindFirstChild("Humanoid") then
+        Character = LocalPlayer.Character
+        if Character then
+            Humanoid = Character:FindFirstChild("Humanoid")
+            if Humanoid and speedBoosted and keyPressed then
+                setSpeed(boostedSpeed)
             end
         end
     end
     
-    return closestPlayer
-end
-
--- Função de interpolação para smoothness
-local function Lerp(a, b, t)
-    return a + (b - a) * t
-end
-
--- Interface gráfica (GUI) para ajustes
-local function CreateGUI()
-    local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "AimbotSettings"
-    ScreenGui.ResetOnSpawn = false
-    ScreenGui.DisplayOrder = 100
-    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-    
-    local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(0, 200, 0, 170)
-    Frame.Position = UDim2.new(0, 10, 0, 10)
-    Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    Frame.BorderSizePixel = 0
-    Frame.Draggable = true
-    Frame.Active = true
-    Frame.Parent = ScreenGui
-    
-    local Title = Instance.new("TextLabel")
-    Title.Size = UDim2.new(1, 0, 0, 25)
-    Title.Position = UDim2.new(0, 0, 0, 0)
-    Title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    Title.BorderSizePixel = 0
-    Title.Text = "Aimbot Settings"
-    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    Title.TextSize = 14
-    Title.Font = Enum.Font.SourceSansBold
-    Title.Parent = Frame
-    
-    -- FOV Slider
-    local FOVLabel = Instance.new("TextLabel")
-    FOVLabel.Size = UDim2.new(1, 0, 0, 20)
-    FOVLabel.Position = UDim2.new(0, 0, 0, 30)
-    FOVLabel.BackgroundTransparency = 1
-    FOVLabel.Text = "FOV: " .. Settings.FOV
-    FOVLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    FOVLabel.TextSize = 14
-    FOVLabel.Font = Enum.Font.SourceSans
-    FOVLabel.Parent = Frame
-    
-    local FOVSlider = Instance.new("Frame")
-    FOVSlider.Size = UDim2.new(0.9, 0, 0, 5)
-    FOVSlider.Position = UDim2.new(0.05, 0, 0, 50)
-    FOVSlider.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    FOVSlider.BorderSizePixel = 0
-    FOVSlider.Parent = Frame
-    
-    local FOVKnob = Instance.new("Frame")
-    FOVKnob.Size = UDim2.new(0, 10, 0, 15)
-    FOVKnob.Position = UDim2.new(Settings.FOV / 500, -5, -0.5, 0)
-    FOVKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    FOVKnob.BorderSizePixel = 0
-    FOVKnob.Parent = FOVSlider
-    
-    -- Smoothness Slider
-    local SmoothnessLabel = Instance.new("TextLabel")
-    SmoothnessLabel.Size = UDim2.new(1, 0, 0, 20)
-    SmoothnessLabel.Position = UDim2.new(0, 0, 0, 70)
-    SmoothnessLabel.BackgroundTransparency = 1
-    SmoothnessLabel.Text = "Smoothness: " .. Settings.Smoothness
-    SmoothnessLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    SmoothnessLabel.TextSize = 14
-    SmoothnessLabel.Font = Enum.Font.SourceSans
-    SmoothnessLabel.Parent = Frame
-    
-    local SmoothnessSlider = Instance.new("Frame")
-    SmoothnessSlider.Size = UDim2.new(0.9, 0, 0, 5)
-    SmoothnessSlider.Position = UDim2.new(0.05, 0, 0, 90)
-    SmoothnessSlider.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    SmoothnessSlider.BorderSizePixel = 0
-    SmoothnessSlider.Parent = Frame
-    
-    local SmoothnessKnob = Instance.new("Frame")
-    SmoothnessKnob.Size = UDim2.new(0, 10, 0, 15)
-    SmoothnessKnob.Position = UDim2.new(Settings.Smoothness, -5, -0.5, 0)
-    SmoothnessKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    SmoothnessKnob.BorderSizePixel = 0
-    SmoothnessKnob.Parent = SmoothnessSlider
-    
-    -- Checkboxes
-    local function CreateCheckbox(name, value, yPos)
-        local CheckboxLabel = Instance.new("TextLabel")
-        CheckboxLabel.Size = UDim2.new(0.7, 0, 0, 20)
-        CheckboxLabel.Position = UDim2.new(0, 10, 0, yPos)
-        CheckboxLabel.BackgroundTransparency = 1
-        CheckboxLabel.Text = name
-        CheckboxLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        CheckboxLabel.TextSize = 14
-        CheckboxLabel.TextXAlignment = Enum.TextXAlignment.Left
-        CheckboxLabel.Font = Enum.Font.SourceSans
-        CheckboxLabel.Parent = Frame
-        
-        local CheckboxBorder = Instance.new("Frame")
-        CheckboxBorder.Size = UDim2.new(0, 16, 0, 16)
-        CheckboxBorder.Position = UDim2.new(0.85, 0, 0, yPos + 2)
-        CheckboxBorder.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        CheckboxBorder.BorderSizePixel = 0
-        CheckboxBorder.Parent = Frame
-        
-        local CheckboxFill = Instance.new("Frame")
-        CheckboxFill.Size = UDim2.new(0.8, 0, 0.8, 0)
-        CheckboxFill.Position = UDim2.new(0.1, 0, 0.1, 0)
-        CheckboxFill.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-        CheckboxFill.BorderSizePixel = 0
-        CheckboxFill.Visible = value
-        CheckboxFill.Parent = CheckboxBorder
-        
-        CheckboxBorder.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                value = not value
-                CheckboxFill.Visible = value
-                
-                if name == "Enabled" then
-                    Settings.Enabled = value
-                elseif name == "Team Check" then
-                    Settings.TeamCheck = value
-                elseif name == "Wall Check" then
-                    Settings.WallCheck = value
-                elseif name == "Show FOV" then
-                    Settings.ShowFOV = value
-                    FOVCircle.Visible = value and Settings.Enabled
-                end
-            end
-        end)
-        
-        return value
-    end
-    
-    CreateCheckbox("Enabled", Settings.Enabled, 110)
-    CreateCheckbox("Team Check", Settings.TeamCheck, 130)
-    CreateCheckbox("Wall Check", Settings.WallCheck, 150)
-    CreateCheckbox("Show FOV", Settings.ShowFOV, 170)
-    
-    -- FOV Slider Logic
-    local isDraggingFOV = false
-    
-    FOVSlider.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDraggingFOV = true
-        end
-    end)
-    
-    FOVSlider.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDraggingFOV = false
-        end
-    end)
-    
-    -- Smoothness Slider Logic
-    local isDraggingSmooth = false
-    
-    SmoothnessSlider.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDraggingSmooth = true
-        end
-    end)
-    
-    SmoothnessSlider.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDraggingSmooth = false
-        end
-    end)
-    
-    RunService.RenderStepped:Connect(function()
-        if isDraggingFOV then
-            local mousePos = UserInputService:GetMouseLocation()
-            local sliderPos = FOVSlider.AbsolutePosition
-            local sliderSize = FOVSlider.AbsoluteSize
-            
-            local relX = math.clamp((mousePos.X - sliderPos.X) / sliderSize.X, 0, 1)
-            FOVKnob.Position = UDim2.new(relX, -5, -0.5, 0)
-            
-            Settings.FOV = math.floor(relX * 500) -- FOV de 0 a 500
-            FOVLabel.Text = "FOV: " .. Settings.FOV
-            UpdateFOV()
-        end
-        
-        if isDraggingSmooth then
-            local mousePos = UserInputService:GetMouseLocation()
-            local sliderPos = SmoothnessSlider.AbsolutePosition
-            local sliderSize = SmoothnessSlider.AbsoluteSize
-            
-            local relX = math.clamp((mousePos.X - sliderPos.X) / sliderSize.X, 0, 1)
-            SmoothnessKnob.Position = UDim2.new(relX, -5, -0.5, 0)
-            
-            Settings.Smoothness = math.max(0.01, relX) -- Smoothness de 0.01 a 1
-            SmoothnessLabel.Text = "Smoothness: " .. string.format("%.2f", Settings.Smoothness)
-        end
-    end)
-    
-    -- Minimizar/Maximizar GUI
-    local MinimizeButton = Instance.new("TextButton")
-    MinimizeButton.Size = UDim2.new(0, 20, 0, 20)
-    MinimizeButton.Position = UDim2.new(1, -25, 0, 2)
-    MinimizeButton.BackgroundTransparency = 1
-    MinimizeButton.Text = "-"
-    MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    MinimizeButton.TextSize = 20
-    MinimizeButton.Font = Enum.Font.SourceSansBold
-    MinimizeButton.Parent = Title
-    
-    local minimized = false
-    local originalSize = Frame.Size
-    
-    MinimizeButton.MouseButton1Click:Connect(function()
-        minimized = not minimized
-        
-        if minimized then
-            Frame.Size = UDim2.new(0, 200, 0, 25)
-            MinimizeButton.Text = "+"
-        else
-            Frame.Size = originalSize
-            MinimizeButton.Text = "-"
-        end
-    end)
-    
-    -- Esconder/Mostrar GUI
-    UserInputService.InputBegan:Connect(function(input)
-        if input.KeyCode == Enum.KeyCode.End then
-            ScreenGui.Enabled = not ScreenGui.Enabled
-        end
-    end)
-    
-    return ScreenGui
-end
-
--- Ativar/Desativar o aimbot com a tecla configurada
-UserInputService.InputBegan:Connect(function(input)
-    if input.KeyCode == Settings.AimKey then
-        Holding = true
+    -- Verificar se a tecla ainda está pressionada
+    if speedBoosted and not keyPressed then
+        speedBoosted = false
+        setSpeed(originalSpeed)
     end
 end)
 
-UserInputService.InputEnded:Connect(function(input)
-    if input.KeyCode == Settings.AimKey then
-        Holding = false
-        Target = nil
-    end
-end)
+-- Notificação sutil de que o script foi ativado
+local function notify(message)
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Script Ativado",
+        Text = message,
+        Duration = 3
+    })
+end
 
--- Loop principal do aimbot
-RunService.RenderStepped:Connect(function()
-    UpdateFOV()
-    
-    if Settings.Enabled and Holding then
-        Target = GetClosestPlayerInFOV()
-        AimbotActive = Target ~= nil
-    else
-        AimbotActive = false
-    end
-    
-    if AimbotActive and Target and Target.Character then
-        local targetPart = Target.Character:FindFirstChild(Settings.TargetPart)
-        
-        if targetPart then
-            local pos = Camera:WorldToViewportPoint(targetPart.Position)
-            local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-            local offset = Vector2.new(pos.X, pos.Y) - center
-            
-            -- Aplicar smoothness
-            local finalOffset = offset * Settings.Smoothness
-            
-            -- Mover o mouse com smoothness
-            mousemoverel(finalOffset.X, finalOffset.Y)
-        end
-    end
-end)
+notify("Pressione X para o boost de velocidade")
 
--- Interface para configurações
-local gui = CreateGUI()
-
--- Inicializar a configuração
-UpdateFOV()
-
--- Notificação de inicialização
-game:GetService("StarterGui"):SetCore("SendNotification", {
-    Title = "Aimbot Ativado",
-    Text = "Pressione Shift para mirar\nPressione End para esconder/mostrar a interface",
-    Duration = 5
-})
-
--- Ajustar círculo FOV quando a câmera muda
-Camera:GetPropertyChangedSignal("ViewportSize"):Connect(UpdateFOV)
-
-return {
-    Settings = Settings,
-    FOVCircle = FOVCircle,
-    GUI = gui
-}
+-- Retornar valor verdadeiro para confirmar que o script foi executado
+return true
