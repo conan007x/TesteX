@@ -1,68 +1,97 @@
+-- Script para aumentar a velocidade ao pressionar X
+-- Voltar ao normal ao soltar X
+
 local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
--- Cache para armazenar o nível conhecido de cada player
-local nivelCache = {}
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local Humanoid = Character:WaitForChild("Humanoid")
 
-local function criarESP(player)
-    local billboard = Instance.new("BillboardGui")
-    billboard.Size = UDim2.new(0, 100, 0, 50)
-    billboard.StudsOffset = Vector3.new(0, 3, 0)
-    billboard.AlwaysOnTop = true
+-- Aguardar novo personagem quando o atual morrer
+LocalPlayer.CharacterAdded:Connect(function(NewCharacter)
+    Character = NewCharacter
+    Humanoid = NewCharacter:WaitForChild("Humanoid")
+end)
 
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 1, 0)
-    label.BackgroundTransparency = 1
-    label.TextColor3 = Color3.new(1, 1, 1)
-    label.TextStrokeTransparency = 0.5
-    label.TextScaled = true
-    label.Parent = billboard
-    label.Text = player.Name .. "\nNivel: Carregando..."
+-- Configurações
+local normalSpeed = 16       -- Velocidade normal do personagem
+local boostedSpeed = 22      -- Velocidade aumentada (ajuste este valor para ser sutil)
+local originalSpeed = Humanoid.WalkSpeed -- Guardar velocidade original
 
-    local function atualizarTexto()
-        local character = player.Character
-        if character and character:FindFirstChild("Head") then
-            local tag = character:FindFirstChild("Tag")
+-- Variáveis de controle
+local speedBoosted = false
+local keyPressed = false
 
-            if tag then
-                -- Detecta a Billboard e guarda o nível no cache
-                for _, descendant in ipairs(tag:GetDescendants()) do
-                    if descendant:IsA("TextLabel") and descendant.Text ~= player.Name then
-                        nivelCache[player] = descendant.Text
-                        break
-                    end
-                end
+-- Função para aplicar velocidade
+local function setSpeed(speed)
+    if Character and Humanoid then
+        Humanoid.WalkSpeed = speed
+    end
+end
+
+-- Detectar quando a tecla X é pressionada ou solta
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    -- Ignorar se a entrada está sendo processada pelo jogo (chat, etc)
+    if gameProcessed then return end
+    
+    -- Verificar se a tecla X foi pressionada
+    if input.KeyCode == Enum.KeyCode.X then
+        keyPressed = true
+        
+        -- Guardar a velocidade atual caso seja diferente do padrão
+        if not speedBoosted then
+            originalSpeed = Humanoid.WalkSpeed
+        end
+        
+        -- Ativar aumento de velocidade
+        speedBoosted = true
+        setSpeed(boostedSpeed)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input, gameProcessed)
+    -- Verificar se a tecla X foi solta
+    if input.KeyCode == Enum.KeyCode.X then
+        keyPressed = false
+        
+        -- Desativar aumento de velocidade
+        speedBoosted = false
+        setSpeed(originalSpeed) -- Voltar à velocidade original
+    end
+end)
+
+-- Loop de verificação de segurança (mantém o script funcionando mesmo se houver problemas)
+RunService.Heartbeat:Connect(function()
+    -- Verificar se o personagem morreu ou resetou
+    if not Character or not Character:FindFirstChild("Humanoid") then
+        Character = LocalPlayer.Character
+        if Character then
+            Humanoid = Character:FindFirstChild("Humanoid")
+            if Humanoid and speedBoosted and keyPressed then
+                setSpeed(boostedSpeed)
             end
-
-            -- Mostra o nível do cache (ou "Desconhecido" se nunca visto)
-            local nivel = nivelCache[player] or "Desconhecido"
-            label.Text = player.Name .. "\n" .. nivel
         end
     end
-
-    local character = player.Character or player.CharacterAdded:Wait()
-    if character:WaitForChild("Head", 5) then
-        billboard.Parent = character.Head
-        RunService.RenderStepped:Connect(atualizarTexto)
+    
+    -- Verificar se a tecla ainda está pressionada
+    if speedBoosted and not keyPressed then
+        speedBoosted = false
+        setSpeed(originalSpeed)
     end
-end
-
-local function adicionarESP(player)
-    if player ~= Players.LocalPlayer then
-        criarESP(player)
-    end
-end
-
-for _, player in ipairs(Players:GetPlayers()) do
-    adicionarESP(player)
-end
-
-Players.PlayerAdded:Connect(function(player)
-    player.CharacterAdded:Connect(function()
-        adicionarESP(player)
-    end)
 end)
 
-Players.PlayerRemoving:Connect(function(player)
-    nivelCache[player] = nil -- Remove do cache quando o player sai
-end)
+-- Notificação sutil de que o script foi ativado
+local function notify(message)
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Script Ativado",
+        Text = message,
+        Duration = 3
+    })
+end
+
+notify("Pressione X para o boost de velocidade")
+
+-- Retornar valor verdadeiro para confirmar que o script foi executado
+return true
