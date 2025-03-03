@@ -1,189 +1,47 @@
--- Script para executor Roblox usando RemoteFunctions
--- Este script permite executar funções no servidor
+-- Script de Velocidade para Roblox
+-- Pressione X para aumentar a velocidade, solte para voltar ao normal
 
-local RemoteFunctionExecutor = {}
+local player = game:GetService("Players").LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
--- Encontra todos os RemoteFunctions no jogo
-function RemoteFunctionExecutor:GetAllRemoteFunctions()
-    local remoteFunctions = {}
-    
-    -- Procura em toda a hierarquia do jogo
-    local function scanInstance(instance)
-        for _, child in pairs(instance:GetChildren()) do
-            if child:IsA("RemoteFunction") then
-                table.insert(remoteFunctions, child)
-            end
-            scanInstance(child)
-        end
+-- Configurações
+local speedMultiplier = 1.5  -- Quanto a velocidade vai aumentar (1.5 = 50% mais rápido)
+local originalSpeed = 16      -- Velocidade padrão do jogador no Roblox
+
+-- Variáveis
+local speedActive = false
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+
+-- Função para obter o humanoid quando o personagem for carregado
+player.CharacterAdded:Connect(function(newCharacter)
+    character = newCharacter
+    humanoid = character:WaitForChild("Humanoid")
+end)
+
+-- Função para ativar/desativar velocidade aumentada
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.X then
+        speedActive = true
+        humanoid.WalkSpeed = originalSpeed * speedMultiplier
     end
-    
-    scanInstance(game)
-    return remoteFunctions
-end
+end)
 
--- Invoca um RemoteFunction específico com argumentos
-function RemoteFunctionExecutor:InvokeRemoteFunction(remoteFunction, ...)
-    if typeof(remoteFunction) == "string" then
-        -- Se for um nome de RemoteFunction, tenta encontrá-lo
-        local foundRemote = nil
-        local function findRemoteByName(instance)
-            for _, child in pairs(instance:GetChildren()) do
-                if child:IsA("RemoteFunction") and child.Name == remoteFunction then
-                    foundRemote = child
-                    return
-                end
-                if #child:GetChildren() > 0 then
-                    findRemoteByName(child)
-                end
-                if foundRemote then return end
-            end
-        end
-        
-        findRemoteByName(game)
-        remoteFunction = foundRemote
+UserInputService.InputEnded:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.X then
+        speedActive = false
+        humanoid.WalkSpeed = originalSpeed
     end
-    
-    if remoteFunction and remoteFunction:IsA("RemoteFunction") then
-        local success, result = pcall(function()
-            return remoteFunction:InvokeServer(...)
-        end)
-        
-        if success then
-            return result
-        else
-            warn("Erro ao invocar RemoteFunction: " .. result)
-            return nil
-        end
-    else
-        warn("RemoteFunction inválido")
-        return nil
-    end
-end
+end)
 
--- Monitora todas as chamadas de RemoteFunctions
-function RemoteFunctionExecutor:MonitorAllRemoteFunctionCalls()
-    local remoteFunctions = self:GetAllRemoteFunctions()
-    
-    for _, remoteFunction in ipairs(remoteFunctions) do
-        local oldInvokeServer = remoteFunction.InvokeServer
-        
-        remoteFunction.InvokeServer = function(self, ...)
-            local args = {...}
-            print("RemoteFunction chamado: " .. remoteFunction.Name)
-            print("Argumentos: ")
-            for i, arg in ipairs(args) do
-                print("  " .. i .. ": " .. tostring(arg))
-            end
-            
-            local result = oldInvokeServer(self, ...)
-            print("Resultado: " .. tostring(result))
-            return result
-        end
+-- Garantir que a velocidade seja mantida se o personagem mudar
+RunService.Heartbeat:Connect(function()
+    if character and humanoid and speedActive then
+        humanoid.WalkSpeed = originalSpeed * speedMultiplier
+    elseif character and humanoid and not speedActive then
+        humanoid.WalkSpeed = originalSpeed
     end
-    
-    print("Monitorando " .. #remoteFunctions .. " RemoteFunctions")
-end
+end)
 
--- Cria um proxy para um RemoteFunction
-function RemoteFunctionExecutor:CreateRemoteFunctionProxy(name, path)
-    local proxy = Instance.new("RemoteFunction")
-    proxy.Name = name
-    
-    if path then
-        local success, instance = pcall(function()
-            return game:GetService(path) or game:WaitForChild(path, 10)
-        end)
-        
-        if success and instance then
-            proxy.Parent = instance
-        else
-            proxy.Parent = game:GetService("ReplicatedStorage")
-        end
-    else
-        proxy.Parent = game:GetService("ReplicatedStorage")
-    end
-    
-    -- Configura o handler para o proxy
-    function proxy.OnServerInvoke(player, functionName, ...)
-        local args = {...}
-        print("Proxy chamado por " .. player.Name .. " para função: " .. functionName)
-        
-        -- Substitua isso com a lógica de execução que você deseja
-        -- Este é apenas um exemplo simples
-        if functionName == "GetPlayerData" then
-            return {
-                Name = player.Name,
-                UserId = player.UserId,
-                Level = 10, -- exemplo
-                Coins = 1000 -- exemplo
-            }
-        elseif functionName == "ExecuteServerCommand" then
-            -- Aqui você poderia executar comandos no servidor
-            -- Cuidado com ações potencialmente perigosas
-            return "Comando executado"
-        end
-        
-        return nil
-    end
-    
-    return proxy
-end
-
--- Encontra e retorna funções do servidor que podem ser chamadas
-function RemoteFunctionExecutor:GetServerFunctions()
-    local serverFunctions = {}
-    
-    -- Procura por módulos do servidor que contêm funções
-    local function scanForModules(instance)
-        for _, child in pairs(instance:GetChildren()) do
-            if child:IsA("ModuleScript") then
-                local success, module = pcall(function()
-                    return require(child)
-                end)
-                
-                if success and type(module) == "table" then
-                    for funcName, func in pairs(module) do
-                        if type(func) == "function" then
-                            table.insert(serverFunctions, {
-                                Module = child.Name,
-                                Path = child:GetFullName(),
-                                FunctionName = funcName
-                            })
-                        end
-                    end
-                end
-            end
-            
-            scanForModules(child)
-        end
-    end
-    
-    -- Começa a busca pelo servidor
-    scanForModules(game:GetService("ServerScriptService"))
-    
-    return serverFunctions
-end
-
--- Uso básico
-local executor = RemoteFunctionExecutor
-
--- Exemplo de uso em um executor:
---[[
-    -- Encontrar todos os RemoteFunctions no jogo
-    local remoteFunctions = executor:GetAllRemoteFunctions()
-    for i, remote in ipairs(remoteFunctions) do
-        print(i .. ": " .. remote.Name .. " (" .. remote:GetFullName() .. ")")
-    end
-    
-    -- Invocar um RemoteFunction específico
-    local resultado = executor:InvokeRemoteFunction("NomeDoRemoteFunction", arg1, arg2)
-    print("Resultado:", resultado)
-    
-    -- Monitorar todas as chamadas de RemoteFunctions
-    executor:MonitorAllRemoteFunctionCalls()
-    
-    -- Criar um proxy para um RemoteFunction
-    local proxy = executor:CreateRemoteFunctionProxy("MeuRemoteProxy")
-]]
-
-return RemoteFunctionExecutor
+print("Script de velocidade carregado! Pressione X para aumentar a velocidade.")
