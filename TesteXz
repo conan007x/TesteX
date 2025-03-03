@@ -1,97 +1,189 @@
--- Script para aumentar a velocidade ao pressionar X
--- Voltar ao normal ao soltar X
+-- Script para executor Roblox usando RemoteFunctions
+-- Este script permite executar funções no servidor
 
-local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
+local RemoteFunctionExecutor = {}
 
-local LocalPlayer = Players.LocalPlayer
-local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local Humanoid = Character:WaitForChild("Humanoid")
-
--- Aguardar novo personagem quando o atual morrer
-LocalPlayer.CharacterAdded:Connect(function(NewCharacter)
-    Character = NewCharacter
-    Humanoid = NewCharacter:WaitForChild("Humanoid")
-end)
-
--- Configurações
-local normalSpeed = 16       -- Velocidade normal do personagem
-local boostedSpeed = 22      -- Velocidade aumentada (ajuste este valor para ser sutil)
-local originalSpeed = Humanoid.WalkSpeed -- Guardar velocidade original
-
--- Variáveis de controle
-local speedBoosted = false
-local keyPressed = false
-
--- Função para aplicar velocidade
-local function setSpeed(speed)
-    if Character and Humanoid then
-        Humanoid.WalkSpeed = speed
+-- Encontra todos os RemoteFunctions no jogo
+function RemoteFunctionExecutor:GetAllRemoteFunctions()
+    local remoteFunctions = {}
+    
+    -- Procura em toda a hierarquia do jogo
+    local function scanInstance(instance)
+        for _, child in pairs(instance:GetChildren()) do
+            if child:IsA("RemoteFunction") then
+                table.insert(remoteFunctions, child)
+            end
+            scanInstance(child)
+        end
     end
+    
+    scanInstance(game)
+    return remoteFunctions
 end
 
--- Detectar quando a tecla X é pressionada ou solta
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    -- Ignorar se a entrada está sendo processada pelo jogo (chat, etc)
-    if gameProcessed then return end
-    
-    -- Verificar se a tecla X foi pressionada
-    if input.KeyCode == Enum.KeyCode.X then
-        keyPressed = true
-        
-        -- Guardar a velocidade atual caso seja diferente do padrão
-        if not speedBoosted then
-            originalSpeed = Humanoid.WalkSpeed
-        end
-        
-        -- Ativar aumento de velocidade
-        speedBoosted = true
-        setSpeed(boostedSpeed)
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input, gameProcessed)
-    -- Verificar se a tecla X foi solta
-    if input.KeyCode == Enum.KeyCode.X then
-        keyPressed = false
-        
-        -- Desativar aumento de velocidade
-        speedBoosted = false
-        setSpeed(originalSpeed) -- Voltar à velocidade original
-    end
-end)
-
--- Loop de verificação de segurança (mantém o script funcionando mesmo se houver problemas)
-RunService.Heartbeat:Connect(function()
-    -- Verificar se o personagem morreu ou resetou
-    if not Character or not Character:FindFirstChild("Humanoid") then
-        Character = LocalPlayer.Character
-        if Character then
-            Humanoid = Character:FindFirstChild("Humanoid")
-            if Humanoid and speedBoosted and keyPressed then
-                setSpeed(boostedSpeed)
+-- Invoca um RemoteFunction específico com argumentos
+function RemoteFunctionExecutor:InvokeRemoteFunction(remoteFunction, ...)
+    if typeof(remoteFunction) == "string" then
+        -- Se for um nome de RemoteFunction, tenta encontrá-lo
+        local foundRemote = nil
+        local function findRemoteByName(instance)
+            for _, child in pairs(instance:GetChildren()) do
+                if child:IsA("RemoteFunction") and child.Name == remoteFunction then
+                    foundRemote = child
+                    return
+                end
+                if #child:GetChildren() > 0 then
+                    findRemoteByName(child)
+                end
+                if foundRemote then return end
             end
         end
+        
+        findRemoteByName(game)
+        remoteFunction = foundRemote
     end
     
-    -- Verificar se a tecla ainda está pressionada
-    if speedBoosted and not keyPressed then
-        speedBoosted = false
-        setSpeed(originalSpeed)
+    if remoteFunction and remoteFunction:IsA("RemoteFunction") then
+        local success, result = pcall(function()
+            return remoteFunction:InvokeServer(...)
+        end)
+        
+        if success then
+            return result
+        else
+            warn("Erro ao invocar RemoteFunction: " .. result)
+            return nil
+        end
+    else
+        warn("RemoteFunction inválido")
+        return nil
     end
-end)
-
--- Notificação sutil de que o script foi ativado
-local function notify(message)
-    game:GetService("StarterGui"):SetCore("SendNotification", {
-        Title = "Script Ativado",
-        Text = message,
-        Duration = 3
-    })
 end
 
-notify("Pressione X para o boost de velocidade")
+-- Monitora todas as chamadas de RemoteFunctions
+function RemoteFunctionExecutor:MonitorAllRemoteFunctionCalls()
+    local remoteFunctions = self:GetAllRemoteFunctions()
+    
+    for _, remoteFunction in ipairs(remoteFunctions) do
+        local oldInvokeServer = remoteFunction.InvokeServer
+        
+        remoteFunction.InvokeServer = function(self, ...)
+            local args = {...}
+            print("RemoteFunction chamado: " .. remoteFunction.Name)
+            print("Argumentos: ")
+            for i, arg in ipairs(args) do
+                print("  " .. i .. ": " .. tostring(arg))
+            end
+            
+            local result = oldInvokeServer(self, ...)
+            print("Resultado: " .. tostring(result))
+            return result
+        end
+    end
+    
+    print("Monitorando " .. #remoteFunctions .. " RemoteFunctions")
+end
 
--- Retornar valor verdadeiro para confirmar que o script foi executado
-return true
+-- Cria um proxy para um RemoteFunction
+function RemoteFunctionExecutor:CreateRemoteFunctionProxy(name, path)
+    local proxy = Instance.new("RemoteFunction")
+    proxy.Name = name
+    
+    if path then
+        local success, instance = pcall(function()
+            return game:GetService(path) or game:WaitForChild(path, 10)
+        end)
+        
+        if success and instance then
+            proxy.Parent = instance
+        else
+            proxy.Parent = game:GetService("ReplicatedStorage")
+        end
+    else
+        proxy.Parent = game:GetService("ReplicatedStorage")
+    end
+    
+    -- Configura o handler para o proxy
+    function proxy.OnServerInvoke(player, functionName, ...)
+        local args = {...}
+        print("Proxy chamado por " .. player.Name .. " para função: " .. functionName)
+        
+        -- Substitua isso com a lógica de execução que você deseja
+        -- Este é apenas um exemplo simples
+        if functionName == "GetPlayerData" then
+            return {
+                Name = player.Name,
+                UserId = player.UserId,
+                Level = 10, -- exemplo
+                Coins = 1000 -- exemplo
+            }
+        elseif functionName == "ExecuteServerCommand" then
+            -- Aqui você poderia executar comandos no servidor
+            -- Cuidado com ações potencialmente perigosas
+            return "Comando executado"
+        end
+        
+        return nil
+    end
+    
+    return proxy
+end
+
+-- Encontra e retorna funções do servidor que podem ser chamadas
+function RemoteFunctionExecutor:GetServerFunctions()
+    local serverFunctions = {}
+    
+    -- Procura por módulos do servidor que contêm funções
+    local function scanForModules(instance)
+        for _, child in pairs(instance:GetChildren()) do
+            if child:IsA("ModuleScript") then
+                local success, module = pcall(function()
+                    return require(child)
+                end)
+                
+                if success and type(module) == "table" then
+                    for funcName, func in pairs(module) do
+                        if type(func) == "function" then
+                            table.insert(serverFunctions, {
+                                Module = child.Name,
+                                Path = child:GetFullName(),
+                                FunctionName = funcName
+                            })
+                        end
+                    end
+                end
+            end
+            
+            scanForModules(child)
+        end
+    end
+    
+    -- Começa a busca pelo servidor
+    scanForModules(game:GetService("ServerScriptService"))
+    
+    return serverFunctions
+end
+
+-- Uso básico
+local executor = RemoteFunctionExecutor
+
+-- Exemplo de uso em um executor:
+--[[
+    -- Encontrar todos os RemoteFunctions no jogo
+    local remoteFunctions = executor:GetAllRemoteFunctions()
+    for i, remote in ipairs(remoteFunctions) do
+        print(i .. ": " .. remote.Name .. " (" .. remote:GetFullName() .. ")")
+    end
+    
+    -- Invocar um RemoteFunction específico
+    local resultado = executor:InvokeRemoteFunction("NomeDoRemoteFunction", arg1, arg2)
+    print("Resultado:", resultado)
+    
+    -- Monitorar todas as chamadas de RemoteFunctions
+    executor:MonitorAllRemoteFunctionCalls()
+    
+    -- Criar um proxy para um RemoteFunction
+    local proxy = executor:CreateRemoteFunctionProxy("MeuRemoteProxy")
+]]
+
+return RemoteFunctionExecutor
